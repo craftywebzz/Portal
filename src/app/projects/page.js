@@ -13,6 +13,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function Projects() {
   // Removed unused variable 'router'
   const { user } = useAuth();
+
   const [projects, setProjects] = useState([]);
   const [filteredProjects, setFilteredProjects] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -22,14 +23,17 @@ export default function Projects() {
   const [error, setError] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
+useEffect(() => {
+  if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     if (params.get('myProjects') === 'true') setShowOnlyUserProjects(true);
     const tagParam = params.get('tag');
     if (tagParam) setSelectedTags([tagParam]);
     const searchParam = params.get('search');
     if (searchParam) setSearchTerm(searchParam);
-  }, []);
+  }
+}, []);
+
 
   useEffect(() => {
     const fetchProjects = async () => {
@@ -57,7 +61,7 @@ export default function Projects() {
     };
 
     fetchProjects();
-  }, []);
+  }, [searchTerm, showOnlyUserProjects, selectedTags, user?.id]);
 
 
   // Refresh projects data
@@ -136,7 +140,7 @@ export default function Projects() {
   useEffect(() => {
     updateUrlParams();
   }, [showOnlyUserProjects, selectedTags, searchTerm, updateUrlParams]);
-
+  const handleSearchChange = (e) => setSearchTerm(e.target.value);
   return (
     <React.Fragment>
       <Navigation />
@@ -155,11 +159,12 @@ export default function Projects() {
         </div>
         <div className="flex gap-2 mt-4 md:mt-0">
           <button
+            aria-label="Refresh projects"
             onClick={refreshProjects}
             disabled={isRefreshing}
-            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            <FiRefreshCw className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <FiRefreshCw className={`mr-2 ${isRefreshing ? 'animate-spin' : ''}`} aria-hidden="true" />
             {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </button>
           <Link
@@ -179,10 +184,11 @@ export default function Projects() {
               </div>
               <input
                 type="text"
+                aria-label="Search projects"
                 placeholder="Search projects..."
                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 dark:border-gray-700 rounded-md leading-5 bg-white dark:bg-gray-900 placeholder-gray-500 focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={handleSearchChange}
               />
             </div>
             <div className="flex items-center">
@@ -243,16 +249,16 @@ export default function Projects() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredProjects.map((project) => (
               <Link href={`/projects/${project.id}`} key={project.id}>
-                <div className="card hover:shadow-lg transition-shadow duration-300 h-full">
+                <div className="card hover:shadow-xl focus:shadow-xl transition-shadow duration-300 h-full outline-none focus:ring-2 focus:ring-primary">
                   <h3 className="text-xl font-semibold mb-2">{project.name}</h3>
                   <p className="text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
                     {project.description}
                   </p>
                   <div className="flex flex-wrap gap-2 mb-4">
-                    {project.tags.map((tag) => (
+                     {(project.tags || []).map((tag) => (
                       <span
                         key={tag}
-                        className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs"
+                         className="px-2 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded text-xs"
                       >
                         {tag}
                       </span>
