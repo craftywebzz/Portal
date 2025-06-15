@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 export class ProjectsService {
+  constructor() {
+    this.supabase = supabase;
+  }
+
   // Fetch all projects
   async getAllProjects(filters = {}) {
     try {
@@ -20,7 +25,7 @@ export class ProjectsService {
       }
 
       if (filters.techStack && filters.techStack.length > 0) {
-        params.append('techStack', filters.techStack[0]); // For simplicity, use first tech stack
+        params.append('techStack', filters.techStack[0]);
       }
 
       // Make API call
@@ -37,10 +42,14 @@ export class ProjectsService {
       }
 
       // Transform the data to match expected format
-      return result.data.map(project => this.transformProjectData(project));
+      const transformedProjects = result.data.map(project => {
+        const transformed = this.transformProjectData(project, filters.userId);
+        return transformed;
+      });
+
+      return transformedProjects;
 
     } catch (error) {
-      console.error('Error fetching projects:', error);
       throw error;
     }
   }
@@ -48,42 +57,88 @@ export class ProjectsService {
   // Fetch single project by ID
   async getProjectById(id) {
     try {
-      const { data: project, error } = await supabase
+      // Check if ID is numeric
+      if (!isNaN(id)) {
+        const { data: projects, error } = await this.supabase
+          .from('projects')
+          .select(`
+            *,
+            created_by_user:profiles!projects_created_by_fkey(
+              id,
+              full_name,
+              avatar_url,
+              github_username
+            ),
+            project_members(
+              id,
+              role,
+              is_active,
+              user_id,
+              joined_at,
+              user:profiles(
+                id,
+                full_name,
+                avatar_url,
+                github_username
+              )
+            )
+          `)
+          .eq('numeric_id', id);
+
+        if (error) {
+          throw new Error(`Error fetching project: ${error.message}`);
+        }
+
+        if (!projects || projects.length === 0) {
+          throw new Error(`Project not found with numeric ID: ${id}`);
+        }
+
+        return projects[0];
+      }
+
+      // If ID is not numeric, validate UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        throw new Error(`Invalid project ID format. Expected a numeric ID or UUID, got: ${id}`);
+      }
+
+      // Search by UUID
+      const { data: projects, error } = await this.supabase
         .from('projects')
         .select(`
           *,
-          project_members (
+          created_by_user:profiles!projects_created_by_fkey(
+            id,
+            full_name,
+            avatar_url,
+            github_username
+          ),
+          project_members(
             id,
             role,
-            joined_at,
-            left_at,
             is_active,
-            contribution_hours,
-            contribution_description,
-            user:profiles(id, full_name, avatar_url, github_username, batch)
-          ),
-          contributions (
-            id,
-            contribution_type,
-            title,
-            description,
-            points_awarded,
-            contribution_date,
-            github_url,
-            user:profiles(id, full_name, avatar_url)
+            user_id,
+            joined_at,
+            user:profiles(
+              id,
+              full_name,
+              avatar_url,
+              github_username
+            )
           )
         `)
-        .eq('id', id)
-        .single();
+        .eq('id', id);
 
       if (error) {
-        throw error;
+        throw new Error(`Error fetching project: ${error.message}`);
       }
 
-      return this.transformProjectDetailData(project);
+      if (!projects || projects.length === 0) {
+        throw new Error(`Project not found with UUID: ${id}`);
+      }
 
+      return projects[0];
     } catch (error) {
-      console.error('Error fetching project:', error);
       throw error;
     }
   }
@@ -120,7 +175,6 @@ export class ProjectsService {
       return this.transformProjectData(result.data);
 
     } catch (error) {
-      console.error('Error creating project:', error);
       throw error;
     }
   }
@@ -129,7 +183,7 @@ export class ProjectsService {
   async updateProject(id, updates, userId) {
     try {
       // Check if user has permission to update
-      const { data: project } = await supabase
+      const { data: project } = await this.supabase
         .from('projects')
         .select('created_by')
         .eq('id', id)
@@ -139,7 +193,7 @@ export class ProjectsService {
         throw new Error('Unauthorized to update this project');
       }
 
-      const { data: updatedProject, error } = await supabase
+      const { data: updatedProject, error } = await this.supabase
         .from('projects')
         .update(updates)
         .eq('id', id)
@@ -153,7 +207,6 @@ export class ProjectsService {
       return this.transformProjectData(updatedProject);
 
     } catch (error) {
-      console.error('Error updating project:', error);
       throw error;
     }
   }
@@ -162,7 +215,7 @@ export class ProjectsService {
   async joinProject(projectId, userId, role = 'member') {
     try {
       // Check if project exists and has space
-      const { data: project } = await supabase
+      const { data: project } = await this.supabase
         .from('projects')
         .select('max_members, project_members(count)')
         .eq('id', projectId)
@@ -178,7 +231,7 @@ export class ProjectsService {
       }
 
       // Add user to project
-      const { data: membership, error } = await supabase
+      const { data: membership, error } = await this.supabase
         .from('project_members')
         .insert({
           project_id: projectId,
@@ -199,7 +252,6 @@ export class ProjectsService {
       return membership;
 
     } catch (error) {
-      console.error('Error joining project:', error);
       throw error;
     }
   }
@@ -207,7 +259,7 @@ export class ProjectsService {
   // Leave project
   async leaveProject(projectId, userId) {
     try {
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from('project_members')
         .update({ 
           is_active: false,
@@ -223,7 +275,6 @@ export class ProjectsService {
       return { success: true };
 
     } catch (error) {
-      console.error('Error leaving project:', error);
       throw error;
     }
   }
@@ -232,18 +283,18 @@ export class ProjectsService {
   async getProjectStats() {
     try {
       // Get total projects by status
-      const { data: statusStats } = await supabase
+      const { data: statusStats } = await this.supabase
         .from('projects')
         .select('status');
 
       // Get total members across all projects
-      const { count: totalMembers } = await supabase
+      const { count: totalMembers } = await this.supabase
         .from('project_members')
         .select('*', { count: 'exact', head: true })
         .eq('is_active', true);
 
       // Get total contributions
-      const { count: totalContributions } = await supabase
+      const { count: totalContributions } = await this.supabase
         .from('contributions')
         .select('*', { count: 'exact', head: true });
 
@@ -258,53 +309,39 @@ export class ProjectsService {
       return stats;
 
     } catch (error) {
-      console.error('Error fetching project stats:', error);
       throw error;
     }
   }
 
   // Transform project data to match expected format
   transformProjectData(project, currentUserId = null) {
-    const activeMembers = project.project_members?.filter(pm => pm.is_active) || [];
-    const contributions = project.contributions || [];
-    
-    // Check if current user is part of this project
-    const isUserProject = currentUserId && (
-      project.created_by === currentUserId ||
-      project.project_lead === currentUserId ||
-      activeMembers.some(member => member.user.id === currentUserId)
-    );
+    try {
+      const isUserProject = currentUserId ? project.created_by === currentUserId : false;
 
-    return {
-      id: project.id,
-      name: project.name,
-      description: project.description,
-      longDescription: project.long_description,
-      tags: project.tech_stack || [],
-      techStack: project.tech_stack || [],
-      status: project.status,
-      priority: project.priority,
-      difficultyLevel: project.difficulty_level,
-      stars: project.github_stars || 0,
-      forks: project.github_forks || 0,
-      contributors: activeMembers.length,
-      owner: project.created_by || 'Unknown',
-      projectLead: null, // Will be populated separately if needed
-      repoUrl: project.github_repo_url,
-      liveUrl: project.live_demo_url,
-      isUserProject: isUserProject,
-      isPublic: project.is_public,
-      startDate: project.start_date,
-      endDate: project.end_date,
-      estimatedHours: project.estimated_hours,
-      actualHours: project.actual_hours,
-      maxMembers: project.max_members,
-      createdAt: project.created_at,
-      updatedAt: project.updated_at,
-      // Additional stats
-      totalContributions: contributions.length,
-      totalPoints: contributions.reduce((sum, c) => sum + (c.points_awarded || 0), 0)
-    };
+      return {
+        id: project.id,
+        numeric_id: project.numeric_id,
+        name: project.name,
+        description: project.description,
+        status: project.status,
+        github_repo_url: project.github_repo_url,
+        created_by: project.created_by,
+        created_at: project.created_at,
+        updated_at: project.updated_at,
+        is_user_project: isUserProject,
+        members: project.project_members?.map(member => ({
+          id: member.id,
+          userId: member.user_id,
+          role: member.role,
+          name: member.user?.full_name || 'Unknown User',
+          avatar: member.user?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.user?.full_name || 'U')}`,
+          githubUsername: member.user?.github_username,
+          joinedAt: member.joined_at
+        })) || []
+      };
+    } catch (error) {
+      throw error;
+    }
   }
 
   // Transform detailed project data
@@ -324,9 +361,7 @@ export class ProjectsService {
         user: {
           id: pm.user.id,
           name: pm.user.full_name,
-          avatar: pm.user.avatar_url || `https://i.pravatar.cc/150?u=${pm.user.id}`,
-          githubUsername: pm.user.github_username,
-          batch: pm.user.batch
+          avatar: pm.user.avatar_url || `https://i.pravatar.cc/150?u=${pm.user.id}`
         }
       })) || [],
       contributions: project.contributions?.map(c => ({
@@ -361,7 +396,6 @@ export class ProjectsService {
       const projects = await this.getAllProjects({ userId });
       return projects;
     } catch (error) {
-      console.error('Error fetching user projects:', error);
       throw error;
     }
   }
@@ -369,7 +403,7 @@ export class ProjectsService {
   // Get trending projects (most active)
   async getTrendingProjects(limit = 5) {
     try {
-      const { data: projects, error } = await supabase
+      const { data: projects, error } = await this.supabase
         .from('projects')
         .select(`
           *,
@@ -387,41 +421,6 @@ export class ProjectsService {
       return projects.map(project => this.transformProjectData(project));
 
     } catch (error) {
-      console.error('Error fetching trending projects:', error);
-      throw error;
-    }
-  }
-
-  // Get project by ID with full details
-  async getProjectById(id) {
-    try {
-      const { data: project, error } = await supabase
-        .from('projects')
-        .select(`
-          *,
-          project_members(
-            id,
-            role,
-            is_active,
-            user_id,
-            user:profiles(id, full_name, avatar_url, github_username)
-          )
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      if (!project) {
-        throw new Error('Project not found');
-      }
-
-      return this.transformProjectData(project);
-
-    } catch (error) {
-      console.error('Error fetching project:', error);
       throw error;
     }
   }
@@ -430,21 +429,30 @@ export class ProjectsService {
   async getProjectMembers(projectId) {
     try {
       const response = await fetch(`/api/projects/${projectId}/members`);
-
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const result = await response.json();
-
+      
       if (!result.success) {
         throw new Error(result.error || 'Failed to fetch project members');
       }
 
-      return result.data;
+      // Transform the members data
+      const transformedMembers = result.data.map(member => ({
+        id: member.id,
+        userId: member.userId,
+        role: member.role,
+        name: member.name || 'Unknown User',
+        avatar: member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name || 'U')}&background=random`,
+        githubUsername: member.githubUsername,
+        joinedAt: member.joinedAt
+      }));
 
+      return transformedMembers;
     } catch (error) {
-      console.error('Error fetching project members:', error);
       throw error;
     }
   }
@@ -457,27 +465,17 @@ export class ProjectsService {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          userId: userId,
-          role: role
-        })
+        body: JSON.stringify({ userId, role }),
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+        throw new Error(data.error || 'Failed to assign student');
       }
 
-      const result = await response.json();
-
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to assign student to project');
-      }
-
-      return result.data;
-
+      return data;
     } catch (error) {
-      console.error('Error assigning student to project:', error);
       throw error;
     }
   }
@@ -503,7 +501,117 @@ export class ProjectsService {
       return true;
 
     } catch (error) {
-      console.error('Error removing member from project:', error);
+      throw error;
+    }
+  }
+
+  async getProjectByNumericId(numericId) {
+    try {
+      const { data: project, error } = await this.supabase
+        .from('projects')
+        .select(`
+          *,
+          created_by_user:profiles!projects_created_by_fkey(
+            id,
+            full_name,
+            avatar_url,
+            github_username
+          ),
+          project_members(
+            id,
+            role,
+            is_active,
+            user_id,
+            joined_at,
+            user:profiles(
+              id,
+              full_name,
+              avatar_url,
+              github_username
+            )
+          )
+        `)
+        .eq('numeric_id', numericId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      if (!project) {
+        throw new Error('Project not found');
+      }
+
+      return project;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getGitHubProjects() {
+    try {
+      const response = await fetch('/api/github/repos');
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to fetch GitHub projects');
+      }
+
+      const data = await response.json();
+      
+      return data.map(repo => ({
+        id: repo.id,
+        name: repo.name,
+        description: repo.description,
+        github_repo_url: repo.html_url,
+        status: 'active',
+        is_github_project: true,
+        tags: repo.topics || [],
+        tech_stack: repo.topics || [],
+        created_at: repo.created_at,
+        updated_at: repo.updated_at,
+        stars_count: repo.stargazers_count,
+        forks_count: repo.forks_count,
+        open_issues_count: repo.open_issues_count,
+        watchers_count: repo.watchers_count,
+        language: repo.language,
+        default_branch: repo.default_branch,
+        owner: {
+          login: repo.owner.login,
+          avatar_url: repo.owner.avatar_url,
+          html_url: repo.owner.html_url
+        }
+      }));
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getAllProjects() {
+    try {
+      const { data: projects, error } = await this.supabase
+        .from('projects')
+        .select(`
+          id,
+          numeric_id,
+          name,
+          description,
+          status,
+          created_at,
+          created_by_user:profiles!projects_created_by_fkey(
+            id,
+            full_name,
+            avatar_url
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new Error(`Error fetching projects: ${error.message}`);
+      }
+
+      return projects || [];
+    } catch (error) {
       throw error;
     }
   }

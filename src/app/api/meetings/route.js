@@ -1,18 +1,22 @@
-
 import { NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import { meetingsService } from '@/lib/services/meetings';
+import { supabaseAdmin } from '@/lib/supabase-admin';
+import { GoogleCalendarService, EmailService } from '@/lib/services/googleCalendar';
 
 // Create a server-side Supabase client that can bypass RLS
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+const supabaseAdminClient = createClient(supabaseUrl, supabaseServiceKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false
   }
 });
+
+const googleCalendarService = new GoogleCalendarService();
+const emailService = new EmailService();
 
 // GET /api/meetings -> get all meetings
 export async function GET() {
@@ -37,7 +41,6 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    console.log('Meeting creation request body:', body);
 
     const {
       title,
@@ -48,10 +51,10 @@ export async function POST(request) {
       meeting_type = 'general',
       max_attendees,
       is_mandatory = false,
-      created_by
+      created_by,
+      attendees = [], // Array of email addresses
+      meeting_link
     } = body;
-
-    console.log('Extracted fields:', { title, description, date, time, location, created_by });
 
     // Validate required fields
     if (!title || !date || !time || !location || !created_by) {
@@ -82,15 +85,16 @@ export async function POST(request) {
       .insert([{
         title,
         description,
-        date: date, // Keep date as date string (YYYY-MM-DD)
-        start_time: time, // Keep time as time string (HH:MM)
-        end_time: null, // Can be set later if needed
-        duration_minutes: 60, // Default duration
+        date: date,
+        start_time: time,
+        end_time: null,
+        duration_minutes: 60,
         location,
         meeting_type,
         max_attendees,
         is_mandatory,
-        created_by
+        created_by,
+        meeting_link
       }])
       .select()
       .single();
@@ -109,21 +113,40 @@ export async function POST(request) {
       .eq('id', meeting.id);
 
     if (updateError) {
-      console.error('Error updating attendance code:', updateError);
+      throw updateError;
     }
 
-    return NextResponse.json({
-      success: true,
-      data: { ...meeting, attendance_code: attendanceCode },
-      message: "Meeting created successfully"
-    });
+    try {
+      // Create Google Calendar event
+      const calendarEvent = await googleCalendarService.createCalendarEvent({
+        ...meeting,
+        attendees
+      });
+
+      // Send email notifications
+      if (attendees.length > 0) {
+        await emailService.sendMeetingInvitation(meeting, attendees);
+      }
+
+      return NextResponse.json({
+        ...meeting,
+        calendar_event_id: calendarEvent.id,
+        attendance_code: attendanceCode
+      });
+    } catch (calendarError) {
+      console.error('Error with calendar/email integration:', calendarError);
+      // Still return the meeting data even if calendar/email fails
+      return NextResponse.json({
+        ...meeting,
+        attendance_code: attendanceCode,
+        calendar_error: calendarError.message
+      });
+    }
 
   } catch (error) {
-    console.error("Meeting creation error:", error);
-
+    console.error('Error creating meeting:', error);
     return NextResponse.json({
-      success: false,
-      error: error.message || "Failed to create meeting"
+      error: error.message
     }, { status: 500 });
   }
 }

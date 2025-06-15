@@ -3,6 +3,104 @@ import { NextResponse } from 'next/server';
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
+// GET /api/attendance - Get attendance records
+export async function GET(request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const meeting_id = searchParams.get('meeting_id');
+
+    if (!meeting_id) {
+      return NextResponse.json(
+        { error: 'Meeting ID is required' },
+        { status: 400 }
+      );
+    }
+
+    const supabase = createRouteHandlerClient({ cookies });
+
+    // Verify user is authorized
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError) {
+      console.error('Auth error:', authError);
+      return NextResponse.json(
+        { error: 'Authentication failed' },
+        { status: 401 }
+      );
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Please sign in to view attendance' },
+        { status: 401 }
+      );
+    }
+
+    // Check if user is meeting creator or admin
+    const { data: meeting, error: meetingError } = await supabase
+      .from('meetings')
+      .select('created_by')
+      .eq('id', meeting_id)
+      .single();
+
+    if (meetingError) {
+      console.error('Meeting error:', meetingError);
+      return NextResponse.json(
+        { error: 'Failed to fetch meeting details' },
+        { status: 500 }
+      );
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('is_admin')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError) {
+      console.error('Profile error:', profileError);
+      return NextResponse.json(
+        { error: 'Failed to fetch user profile' },
+        { status: 500 }
+      );
+    }
+
+    // Check if user is authorized to view attendance
+    if (!meeting || (meeting.created_by !== user.id && !profile?.is_admin)) {
+      return NextResponse.json(
+        { error: 'Unauthorized to view attendance' },
+        { status: 403 }
+      );
+    }
+
+    // Fetch attendance records
+    const { data: attendance, error: attendanceError } = await supabase
+      .from('attendance')
+      .select(`
+        *,
+        user:profiles(id, full_name, avatar_url)
+      `)
+      .eq('meeting_id', meeting_id);
+
+    if (attendanceError) {
+      console.error('Attendance error:', attendanceError);
+      return NextResponse.json(
+        { error: 'Failed to fetch attendance records' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(attendance);
+
+  } catch (error) {
+    console.error('Error in GET /api/attendance:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/attendance - Mark attendance
 export async function POST(request) {
   try {
@@ -110,64 +208,6 @@ export async function POST(request) {
     return NextResponse.json(
       { 
         error: 'Failed to mark attendance',
-        details: error.message 
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// GET /api/attendance - Get attendance records
-export async function GET(request) {
-  try {
-    const supabase = createRouteHandlerClient({ cookies });
-    const { searchParams } = new URL(request.url);
-    
-    // Parse query parameters
-    const meetingId = searchParams.get('meeting_id');
-    const userId = searchParams.get('user_id');
-    const limit = parseInt(searchParams.get('limit')) || 50;
-    const offset = parseInt(searchParams.get('offset')) || 0;
-
-    // Build query
-    let query = supabase
-      .from('attendance')
-      .select(`
-        *,
-        meeting:meetings(id, title, date, location),
-        user:profiles(id, full_name, avatar_url),
-        marked_by_user:profiles!attendance_marked_by_fkey(id, full_name)
-      `)
-      .order('marked_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    // Apply filters
-    if (meetingId) {
-      query = query.eq('meeting_id', meetingId);
-    }
-    
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-
-    const { data: attendance, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    return NextResponse.json({
-      success: true,
-      data: attendance,
-      count: attendance.length
-    });
-
-  } catch (error) {
-    console.error('Error fetching attendance:', error);
-    
-    return NextResponse.json(
-      { 
-        error: 'Failed to fetch attendance',
         details: error.message 
       },
       { status: 500 }

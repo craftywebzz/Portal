@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS public.github_stats (
 -- Projects managed by the dev club
 CREATE TABLE IF NOT EXISTS public.projects (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  numeric_id BIGINT UNIQUE,
   name TEXT NOT NULL,
   description TEXT,
   long_description TEXT,
@@ -91,6 +92,22 @@ CREATE TABLE IF NOT EXISTS public.projects (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Add numeric_id column to projects table if it doesn't exist
+DO $$ 
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_name = 'projects' 
+    AND column_name = 'numeric_id'
+  ) THEN
+    ALTER TABLE public.projects ADD COLUMN numeric_id BIGINT UNIQUE;
+  END IF;
+END $$;
+
+-- Create index on numeric_id
+CREATE INDEX IF NOT EXISTS projects_numeric_id_idx ON public.projects(numeric_id);
 
 -- =====================================================
 -- 4. PROJECT MEMBERS TABLE
@@ -318,182 +335,159 @@ ALTER TABLE public.rewards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meeting_invites ENABLE ROW LEVEL SECURITY;
 
--- Profiles policies
-CREATE POLICY "Users can view own profile" ON public.profiles
-  FOR SELECT USING (auth.uid() = id);
+-- =====================================================
+-- RLS POLICIES (Essential ones)
+-- =====================================================
 
-CREATE POLICY "Users can update own profile" ON public.profiles
-  FOR UPDATE USING (auth.uid() = id);
+DO $$ 
+BEGIN
+  -- Profiles policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can view own profile') THEN
+    CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
+  END IF;
 
-CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles
-  FOR SELECT USING (true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can update own profile') THEN
+    CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+  END IF;
 
-CREATE POLICY "Users can insert own profile" ON public.profiles
-  FOR INSERT WITH CHECK (auth.uid() = id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Public profiles are viewable by everyone') THEN
+    CREATE POLICY "Public profiles are viewable by everyone" ON public.profiles FOR SELECT USING (true);
+  END IF;
 
--- GitHub stats policies
-CREATE POLICY "Users can view own github stats" ON public.github_stats
-  FOR SELECT USING (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'profiles' AND policyname = 'Users can insert own profile') THEN
+    CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+  END IF;
 
-CREATE POLICY "Users can update own github stats" ON public.github_stats
-  FOR UPDATE USING (auth.uid() = user_id);
+  -- GitHub stats policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'github_stats' AND policyname = 'Public github stats are viewable by everyone') THEN
+    CREATE POLICY "Public github stats are viewable by everyone" ON public.github_stats FOR SELECT USING (true);
+  END IF;
 
-CREATE POLICY "Users can insert own github stats" ON public.github_stats
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'github_stats' AND policyname = 'Users can manage own github stats') THEN
+    CREATE POLICY "Users can manage own github stats" ON public.github_stats FOR ALL USING (auth.uid() = user_id);
+  END IF;
 
-CREATE POLICY "Public github stats are viewable by everyone" ON public.github_stats
-  FOR SELECT USING (true);
+  -- Projects policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'projects' AND policyname = 'Public projects are viewable by everyone') THEN
+    CREATE POLICY "Public projects are viewable by everyone" ON public.projects FOR SELECT USING (is_public = true);
+  END IF;
 
--- Projects policies
-CREATE POLICY "Public projects are viewable by everyone" ON public.projects
-  FOR SELECT USING (is_public = true);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'projects' AND policyname = 'Only admins can create and manage projects') THEN
+    CREATE POLICY "Only admins can create and manage projects" ON public.projects FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Project creators can manage their projects" ON public.projects
-  FOR ALL USING (auth.uid() = created_by);
+  -- Project members policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'project_members' AND policyname = 'Project members can view project memberships') THEN
+    CREATE POLICY "Project members can view project memberships" ON public.project_members FOR SELECT USING (
+      auth.uid() = user_id OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Project leads can manage their projects" ON public.projects
-  FOR ALL USING (auth.uid() = project_lead);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'project_members' AND policyname = 'Only admins can manage project memberships') THEN
+    CREATE POLICY "Only admins can manage project memberships" ON public.project_members FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Authenticated users can create projects" ON public.projects
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  -- Meetings policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meetings' AND policyname = 'Everyone can view meetings') THEN
+    CREATE POLICY "Everyone can view meetings" ON public.meetings FOR SELECT USING (true);
+  END IF;
 
--- Project members policies
-CREATE POLICY "Project members can view project memberships" ON public.project_members
-  FOR SELECT USING (
-    auth.uid() = user_id OR
-    EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND (created_by = auth.uid() OR project_lead = auth.uid()))
-  );
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meetings' AND policyname = 'Only admins can create and manage meetings') THEN
+    CREATE POLICY "Only admins can create and manage meetings" ON public.meetings FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Project leads can manage memberships" ON public.project_members
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.projects WHERE id = project_id AND (created_by = auth.uid() OR project_lead = auth.uid()))
-  );
+  -- Attendance policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'attendance' AND policyname = 'Users can view attendance for their meetings') THEN
+    CREATE POLICY "Users can view attendance for their meetings" ON public.attendance FOR SELECT USING (
+      -- User is invited to the meeting
+      EXISTS (SELECT 1 FROM public.meeting_invites WHERE meeting_id = attendance.meeting_id AND user_id = auth.uid())
+      OR
+      -- User is an admin
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Users can join projects" ON public.project_members
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'attendance' AND policyname = 'Only admins can manage attendance') THEN
+    CREATE POLICY "Only admins can manage attendance" ON public.attendance FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
--- Meetings policies
-CREATE POLICY "Everyone can view meetings" ON public.meetings
-  FOR SELECT USING (true);
+  -- Contributions policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'contributions' AND policyname = 'Users can view own contributions') THEN
+    CREATE POLICY "Users can view own contributions" ON public.contributions FOR SELECT USING (
+      auth.uid() = user_id OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Authenticated users can create meetings" ON public.meetings
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'contributions' AND policyname = 'Only admins can manage contributions') THEN
+    CREATE POLICY "Only admins can manage contributions" ON public.contributions FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Meeting creators can manage their meetings" ON public.meetings
-  FOR ALL USING (auth.uid() = created_by);
+  -- Rewards policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rewards' AND policyname = 'Users can view own rewards') THEN
+    CREATE POLICY "Users can view own rewards" ON public.rewards FOR SELECT USING (
+      auth.uid() = user_id OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
--- Attendance policies
-CREATE POLICY "Users can view own attendance" ON public.attendance
-  FOR SELECT USING (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'rewards' AND policyname = 'Only admins can manage rewards') THEN
+    CREATE POLICY "Only admins can manage rewards" ON public.rewards FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Meeting creators can view all attendance" ON public.attendance
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.meetings WHERE id = meeting_id AND created_by = auth.uid())
-  );
+  -- Notifications policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'Users can view own notifications') THEN
+    CREATE POLICY "Users can view own notifications" ON public.notifications FOR SELECT USING (
+      auth.uid() = user_id OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Users can mark own attendance" ON public.attendance
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'notifications' AND policyname = 'Only admins can create notifications') THEN
+    CREATE POLICY "Only admins can create notifications" ON public.notifications FOR INSERT WITH CHECK (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
-CREATE POLICY "Meeting creators can manage attendance" ON public.attendance
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.meetings WHERE id = meeting_id AND created_by = auth.uid())
-  );
+  -- Meeting invites policies
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meeting_invites' AND policyname = 'Users can view own invites') THEN
+    CREATE POLICY "Users can view own invites" ON public.meeting_invites FOR SELECT USING (
+      auth.uid() = user_id OR
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
 
--- Contributions policies
-CREATE POLICY "Users can view own contributions" ON public.contributions
-  FOR SELECT USING (auth.uid() = user_id);
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'meeting_invites' AND policyname = 'Only admins can manage invites') THEN
+    CREATE POLICY "Only admins can manage invites" ON public.meeting_invites FOR ALL USING (
+      EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
+    );
+  END IF;
+END $$;
 
-CREATE POLICY "Public contributions are viewable by everyone" ON public.contributions
-  FOR SELECT USING (true);
+-- =====================================================
+-- TRIGGERS (at the end of the file)
+-- =====================================================
 
-CREATE POLICY "Users can create own contributions" ON public.contributions
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own contributions" ON public.contributions
-  FOR UPDATE USING (auth.uid() = user_id);
-
--- Rewards policies
-CREATE POLICY "Users can view own rewards" ON public.rewards
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Public rewards are viewable by everyone" ON public.rewards
-  FOR SELECT USING (true);
-
-CREATE POLICY "Admins can manage rewards" ON public.rewards
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND is_admin = true)
-  );
-
--- Notifications policies
-CREATE POLICY "Users can view own notifications" ON public.notifications
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own notifications" ON public.notifications
-  FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Authenticated users can create notifications" ON public.notifications
-  FOR INSERT WITH CHECK (auth.uid() = created_by);
-
--- Meeting invites policies
-CREATE POLICY "Users can view own invites" ON public.meeting_invites
-  FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Meeting creators can view all invites" ON public.meeting_invites
-  FOR SELECT USING (
-    EXISTS (SELECT 1 FROM public.meetings WHERE id = meeting_id AND created_by = auth.uid())
-  );
-
-CREATE POLICY "Meeting creators can manage invites" ON public.meeting_invites
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM public.meetings WHERE id = meeting_id AND created_by = auth.uid())
-  );
-
-CREATE POLICY "Users can respond to their invites" ON public.meeting_invites
-  FOR UPDATE USING (auth.uid() = user_id);
+-- Note: Supabase automatically handles updated_at timestamps
+-- No need for explicit triggers as they are managed by Supabase
+-- The updated_at column will be automatically updated by Supabase
 
 -- =====================================================
 -- FUNCTIONS AND TRIGGERS
 -- =====================================================
-
--- Function to automatically update the updated_at column
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- Create triggers for updated_at on all tables
-CREATE TRIGGER update_profiles_updated_at BEFORE UPDATE ON public.profiles
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_github_stats_updated_at BEFORE UPDATE ON public.github_stats
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_project_members_updated_at BEFORE UPDATE ON public.project_members
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_meetings_updated_at BEFORE UPDATE ON public.meetings
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_attendance_updated_at BEFORE UPDATE ON public.attendance
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_contributions_updated_at BEFORE UPDATE ON public.contributions
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_rewards_updated_at BEFORE UPDATE ON public.rewards
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_notifications_updated_at BEFORE UPDATE ON public.notifications
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_meeting_invites_updated_at BEFORE UPDATE ON public.meeting_invites
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to automatically create a profile when a user signs up
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -510,10 +504,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to automatically create profile on user signup
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- Create auth trigger only if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger t 
+        JOIN pg_class c ON t.tgrelid = c.oid 
+        WHERE c.relname = 'users' 
+        AND t.tgname = 'on_auth_user_created'
+    ) THEN
+        CREATE TRIGGER on_auth_user_created
+            AFTER INSERT ON auth.users
+            FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+    END IF;
+END $$;
 
 -- Function to calculate reward points for a user
 CREATE OR REPLACE FUNCTION public.calculate_user_reward_points(user_uuid UUID)
@@ -542,14 +547,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to update reward points when rewards are added/modified
-CREATE TRIGGER update_reward_points_on_insert
-  AFTER INSERT ON public.rewards
-  FOR EACH ROW EXECUTE FUNCTION public.update_user_reward_points();
+-- Create reward triggers only if they don't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger t 
+        JOIN pg_class c ON t.tgrelid = c.oid 
+        WHERE c.relname = 'rewards' 
+        AND t.tgname = 'update_reward_points_on_insert'
+    ) THEN
+        CREATE TRIGGER update_reward_points_on_insert
+            AFTER INSERT ON public.rewards
+            FOR EACH ROW EXECUTE FUNCTION public.update_user_reward_points();
+    END IF;
 
-CREATE TRIGGER update_reward_points_on_update
-  AFTER UPDATE ON public.rewards
-  FOR EACH ROW EXECUTE FUNCTION public.update_user_reward_points();
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger t 
+        JOIN pg_class c ON t.tgrelid = c.oid 
+        WHERE c.relname = 'rewards' 
+        AND t.tgname = 'update_reward_points_on_update'
+    ) THEN
+        CREATE TRIGGER update_reward_points_on_update
+            AFTER UPDATE ON public.rewards
+            FOR EACH ROW EXECUTE FUNCTION public.update_user_reward_points();
+    END IF;
+END $$;
 
 -- Function to generate attendance code
 CREATE OR REPLACE FUNCTION public.generate_attendance_code()
@@ -580,26 +604,129 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to award points for attendance
-CREATE TRIGGER award_attendance_points_trigger
-  AFTER INSERT ON public.attendance
-  FOR EACH ROW EXECUTE FUNCTION public.award_attendance_points();
+-- Create attendance trigger only if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_trigger t 
+        JOIN pg_class c ON t.tgrelid = c.oid 
+        WHERE c.relname = 'attendance' 
+        AND t.tgname = 'award_attendance_points_trigger'
+    ) THEN
+        CREATE TRIGGER award_attendance_points_trigger
+            AFTER INSERT ON public.attendance
+            FOR EACH ROW EXECUTE FUNCTION public.award_attendance_points();
+    END IF;
+END $$;
 
 -- =====================================================
 -- ENABLE REALTIME
 -- =====================================================
 
--- Enable realtime for all tables
-ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.github_stats;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.project_members;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.meetings;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.contributions;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.rewards;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.meeting_invites;
+-- Enable realtime for tables only if they're not already enabled
+DO $$ 
+BEGIN
+    -- Profiles
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'profiles'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+    END IF;
+
+    -- GitHub stats
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'github_stats'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.github_stats;
+    END IF;
+
+    -- Projects
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'projects'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+    END IF;
+
+    -- Project members
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'project_members'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.project_members;
+    END IF;
+
+    -- Meetings
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'meetings'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.meetings;
+    END IF;
+
+    -- Attendance
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'attendance'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
+    END IF;
+
+    -- Contributions
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'contributions'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.contributions;
+    END IF;
+
+    -- Rewards
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'rewards'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.rewards;
+    END IF;
+
+    -- Notifications
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'notifications'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
+    END IF;
+
+    -- Meeting invites
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' 
+        AND tablename = 'meeting_invites'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.meeting_invites;
+    END IF;
+END $$;
 
 -- =====================================================
 -- SAMPLE DATA (Optional - for testing)

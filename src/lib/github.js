@@ -17,7 +17,17 @@ export class GitHubService {
     };
 
     if (this.apiKey) {
-      headers['Authorization'] = `token ${this.apiKey}`;
+      // Try different token formats
+      const tokenFormats = [
+        `Bearer ${this.apiKey}`,
+        `token ${this.apiKey}`,
+        this.apiKey
+      ];
+
+      // Use the first format for now
+      headers['Authorization'] = tokenFormats[0];
+    } else {
+      console.warn('Making GitHub API request without authentication token');
     }
 
     return headers;
@@ -26,17 +36,18 @@ export class GitHubService {
   // Fetch user's GitHub profile
   async fetchUserProfile(username) {
     try {
-      const response = await fetch(`${GITHUB_API_BASE}/users/${username}`, {
+      const url = `${GITHUB_API_BASE}/users/${username}`;
+      const response = await fetch(url, {
         headers: this.getHeaders()
       });
 
       if (!response.ok) {
-        throw new Error(`GitHub API error: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`GitHub API error: ${response.status} - ${errorText}`);
       }
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching GitHub profile:', error);
       throw error;
     }
   }
@@ -55,7 +66,6 @@ export class GitHubService {
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching GitHub repositories:', error);
       throw error;
     }
   }
@@ -76,7 +86,6 @@ export class GitHubService {
 
       return await response.json();
     } catch (error) {
-      console.error('Error fetching GitHub contributions:', error);
       throw error;
     }
   }
@@ -161,8 +170,6 @@ export class GitHubService {
   // Fetch and process complete GitHub data for a user
   async fetchCompleteUserData(username) {
     try {
-
-
       // Fetch profile and repositories in parallel
       const [profile, repositories] = await Promise.all([
         this.fetchUserProfile(username),
@@ -197,7 +204,6 @@ export class GitHubService {
         }
       };
     } catch (error) {
-      console.error('Error fetching complete GitHub data:', error);
       throw error;
     }
   }
@@ -230,7 +236,6 @@ export class GitHubService {
         });
 
       if (error) {
-        console.error('Error saving GitHub data to Supabase:', error);
         throw error;
       }
 
@@ -245,7 +250,6 @@ export class GitHubService {
 
       return data;
     } catch (error) {
-      console.error('Error saving GitHub data:', error);
       throw error;
     }
   }
@@ -265,7 +269,6 @@ export class GitHubService {
 
       return data;
     } catch (error) {
-      console.error('Error fetching cached GitHub data:', error);
       return null;
     }
   }
@@ -285,12 +288,10 @@ export class GitHubService {
       const cachedData = await this.getCachedGitHubData(userId);
       
       if (!forceRefresh && cachedData && !this.needsRefresh(cachedData.last_fetched)) {
-
         return cachedData;
       }
 
       // Fetch fresh data
-
       const githubData = await this.fetchCompleteUserData(username);
       
       // Save to cache
@@ -299,16 +300,84 @@ export class GitHubService {
       // Return the saved data
       return await this.getCachedGitHubData(userId);
     } catch (error) {
-      console.error('Error getting GitHub data with cache:', error);
-      
       // Return cached data if available, even if stale
       const cachedData = await this.getCachedGitHubData(userId);
       if (cachedData) {
-
         return cachedData;
       }
       
       throw error;
+    }
+  }
+
+  // Test method to verify API access
+  async testApiAccess() {
+    try {
+      // First try a public endpoint
+      const publicResponse = await fetch('https://api.github.com/users/octocat', {
+        headers: this.getHeaders()
+      });
+
+      // Then try the organization endpoint
+      const orgResponse = await fetch('https://api.github.com/orgs/nst-sdc', {
+        headers: this.getHeaders()
+      });
+
+      if (!orgResponse.ok) {
+        const errorText = await orgResponse.text();
+        throw new Error(`Organization access error: ${errorText}`);
+      }
+
+      return {
+        publicAccess: publicResponse.ok,
+        orgAccess: orgResponse.ok
+      };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async fetchOrganizationRepos(orgName) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/orgs/${orgName}/repos?sort=updated&per_page=100`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw new Error(`Failed to fetch organization repos: ${error.message}`);
+    }
+  }
+
+  async fetchUserRepos(username) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/users/${username}/repos?sort=updated&per_page=100`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            Accept: 'application/vnd.github.v3+json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw new Error(`Failed to fetch user repos: ${error.message}`);
     }
   }
 }
@@ -343,7 +412,6 @@ export async function refreshAllGitHubData() {
 
     return results;
   } catch (error) {
-    console.error('Error refreshing all GitHub data:', error);
     throw error;
   }
 }

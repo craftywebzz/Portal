@@ -22,7 +22,11 @@ import {
   FiZap,
   FiStar,
   FiTarget,
-  FiBarChart
+  FiBarChart,
+  FiPlus,
+  FiBookmark,
+  FiMessageSquare,
+  FiBell
 } from "react-icons/fi";
 import { dashboardService } from '@/lib/services/dashboard';
 
@@ -40,7 +44,7 @@ export default function Dashboard() {
   // Redirect to sign-in if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/auth/signin");
+      router.push("/");
     }
   }, [authLoading, user, router]);
 
@@ -98,6 +102,9 @@ export default function Dashboard() {
     return new Date(dateString).toLocaleDateString('en-US', options);
   };
 
+  // Check if user is admin
+  const isAdmin = user?.is_admin || false;
+
   // Enhanced loading state with modern skeleton
   if (authLoading || loading) {
     return (
@@ -153,7 +160,6 @@ export default function Dashboard() {
       <Navigation />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 dark:from-black dark:via-gray-900 dark:to-black">
         <div className="container mx-auto py-8 px-4 lg:px-6">
-
           {/* Enhanced Header Section */}
           <div className="mb-12 flex flex-col md:flex-row justify-between items-start md:items-center space-y-6 md:space-y-0">
             <div className="space-y-2">
@@ -218,10 +224,6 @@ export default function Dashboard() {
                         <span>Recent: {stats?.recentAttendance || 0}</span>
                       </div>
                     </div>
-                    {/* <div className="text-right">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">Rank</div>
-                      <div className="text-lg font-bold text-purple-600 dark:text-purple-400">#1</div>
-                    </div> */}
                   </div>
                   <Link href={`/students/${user?.id}`} className="group/link flex items-center text-sm text-purple-600 dark:text-purple-400 hover:text-purple-500 dark:hover:text-purple-300 font-medium transition-colors">
                     View breakdown 
@@ -250,10 +252,6 @@ export default function Dashboard() {
                         <span>{stats?.activeProjects || 0} active total</span>
                       </div>
                     </div>
-                    {/* <div className="text-right">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">Status</div>
-                      <div className="text-lg font-bold text-green-600 dark:text-green-400">Active</div>
-                    </div> */}
                   </div>
                   <Link href="/projects?myProjects=true" className="group/link flex items-center text-sm text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 dark:hover:text-cyan-300 font-medium transition-colors">
                     View my projects 
@@ -282,10 +280,6 @@ export default function Dashboard() {
                         <span>Next: {meetings[0]?.date ? formatDate(meetings[0]?.date) : "None"}</span>
                       </div>
                     </div>
-                    {/* <div className="text-right">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">This Week</div>
-                      <div className="text-lg font-bold text-green-600 dark:text-green-400">2</div>
-                    </div> */}
                   </div>
                   <Link href="/meetings" className="group/link flex items-center text-sm text-green-600 dark:text-green-400 hover:text-green-500 dark:hover:text-green-300 font-medium transition-colors">
                     View schedule 
@@ -314,10 +308,6 @@ export default function Dashboard() {
                         <span>{stats?.totalProjects || 0} total projects</span>
                       </div>
                     </div>
-                    {/* <div className="text-right">
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide font-medium">Growth</div>
-                      <div className="text-lg font-bold text-green-600 dark:text-green-400">+12%</div>
-                    </div> */}
                   </div>
                   <Link href="/students" className="group/link flex items-center text-sm text-orange-600 dark:text-orange-400 hover:text-orange-500 dark:hover:text-orange-300 font-medium transition-colors">
                     View all members 
@@ -346,10 +336,10 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {projects.length > 0 ? (
                 projects.map((project, index) => (
-                  <div key={project.id} className="group relative bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 hover:border-cyan-500/50 dark:hover:border-cyan-400/50 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 transform hover:scale-105">
-                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-purple-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <div key={project.id} className="group relative bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 transform hover:scale-[1.02]">
+                    <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-blue-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <div className="relative">
-                      <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
                           <div className="flex items-center space-x-2 mb-2">
                             <h3 className="font-bold text-lg text-gray-900 dark:text-white">{project.name}</h3>
@@ -414,19 +404,15 @@ export default function Dashboard() {
                   </div>
                 ))
               ) : (
-                <div className="col-span-full">
-                  <div className="text-center py-16 bg-white/50 dark:bg-black/20 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
-                    <div className="w-16 h-16 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <FiCode className="h-8 w-8 text-cyan-600 dark:text-cyan-400" />
+                <div className="col-span-2">
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 bg-gradient-to-br from-gray-500/20 to-gray-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <FiCode className="h-8 w-8 text-gray-600 dark:text-gray-400" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Projects Yet</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-                      You're not part of any projects yet. Start by creating your first project or joining an existing one.
+                    <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                      Start contributing to projects or create a new one to see your progress here.
                     </p>
-                    <Link href="/projects/new" className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transform hover:scale-105 transition-all duration-300">
-                      <FiZap className="mr-2 h-5 w-5" />
-                      Create New Project
-                    </Link>
                   </div>
                 </div>
               )}
@@ -444,87 +430,77 @@ export default function Dashboard() {
               </div>
               <Link href="/meetings" className="group flex items-center px-4 py-2 text-green-600 dark:text-green-400 hover:text-green-500 dark:hover:text-green-300 font-semibold transition-colors">
                 View all 
-                <FiArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform " />
-                {/* Enhanced Upcoming Meetings Section - Continued */}
+                <FiArrowRight size={16} className="ml-1 group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {meetings.length > 0 ? (
-                meetings.map((meeting, index) => (
-                  <div key={meeting.id} className="group relative bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 hover:border-green-500/50 dark:hover:border-green-400/50 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/10 transform hover:scale-105">
+                meetings.map((meeting) => (
+                  <div key={meeting.id} className="group relative bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/10 transform hover:scale-[1.02]">
                     <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-emerald-500/5 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                     <div className="relative">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="font-bold text-lg text-gray-900 dark:text-white">{meeting.title}</h3>
-                            {meeting.attendanceOpen && (
-                              <span className="flex items-center text-xs px-2 py-1 bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-700 dark:text-green-300 rounded-full font-medium border border-green-500/30">
-                                <div className="w-2 h-2 bg-green-500 rounded-full mr-1 animate-pulse"></div>
-                                Attendance Open
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="space-y-2 mb-4">
-                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                              <div className="p-1 bg-blue-100 dark:bg-blue-900/30 rounded-md mr-2">
-                                <FiCalendar className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                              </div>
-                              <span className="font-medium">{formatDate(meeting.date)}</span>
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{meeting.title}</h3>
+                          <div className="flex items-center space-x-4 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center">
+                              <FiCalendar className="mr-1 h-4 w-4" />
+                              <span>{formatDate(meeting.date)}</span>
                             </div>
-                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                              <div className="p-1 bg-purple-100 dark:bg-purple-900/30 rounded-md mr-2">
-                                <FiClock className="h-3 w-3 text-purple-600 dark:text-purple-400" />
-                              </div>
-                              <span>{meeting.time}</span>
-                            </div>
-                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                              <div className="p-1 bg-orange-100 dark:bg-orange-900/30 rounded-md mr-2">
-                                <FiMapPin className="h-3 w-3 text-orange-600 dark:text-orange-400" />
-                              </div>
-                              <span>{meeting.location}</span>
+                            <div className="flex items-center">
+                              <FiClock className="mr-1 h-4 w-4" />
+                              <span>{meeting.start_time} - {meeting.end_time}</span>
                             </div>
                           </div>
                         </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          meeting.meeting_type === 'general' 
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300'
+                            : meeting.meeting_type === 'project'
+                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300'
+                            : 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300'
+                        }`}>
+                          {(meeting.meeting_type || 'general').charAt(0).toUpperCase() + (meeting.meeting_type || 'general').slice(1)}
+                        </span>
                       </div>
                       
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 line-clamp-2">
+                        {meeting.description || 'No description available'}
+                      </p>
+                      
                       <div className="flex justify-between items-center pt-4 border-t border-gray-200/50 dark:border-gray-700/50">
+                        <div className="flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
+                          <div className="flex items-center">
+                            <FiMapPin className="mr-1 h-3 w-3" />
+                            <span>{meeting.location}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <FiUsers className="mr-1 h-3 w-3" />
+                            <span>{meeting.max_attendees || 'Unlimited'} spots</span>
+                          </div>
+                        </div>
                         <Link 
-                          href={`/meetings#meeting-${meeting.id}`} 
+                          href={`/meetings/${meeting.id}`} 
                           className="group/link flex items-center text-sm text-green-600 dark:text-green-400 hover:text-green-500 dark:hover:text-green-300 font-medium transition-colors"
                         >
                           View details 
                           <FiArrowRight size={14} className="ml-1 group-hover/link:translate-x-1 transition-transform" />
                         </Link>
-                        
-                        {meeting.attendanceOpen && (
-                          <button className="flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-green-500/25 transform hover:scale-105 transition-all duration-300">
-                            <FiCheckCircle className="mr-1 h-4 w-4" />
-                            Mark Attendance
-                          </button>
-                        )}
                       </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="col-span-full">
-                  <div className="text-center py-16 bg-white/50 dark:bg-black/20 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
-                    <div className="w-16 h-16 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <FiCalendar className="h-8 w-8 text-green-600 dark:text-green-400" />
+                <div className="col-span-2">
+                  <div className="text-center py-16">
+                    <div className="w-16 h-16 bg-gradient-to-br from-gray-500/20 to-gray-600/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <FiCalendar className="h-8 w-8 text-gray-600 dark:text-gray-400" />
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">No Upcoming Meetings</h3>
-                    <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-                      No meetings are currently scheduled. Check back later or schedule a new meeting to get started.
+                    <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto">
+                      There are no scheduled meetings at the moment. Check back later for updates.
                     </p>
-                    {user?.email && (
-                      <Link href="/meetings/new" className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-xl hover:shadow-lg hover:shadow-green-500/25 transform hover:scale-105 transition-all duration-300">
-                        <FiZap className="mr-2 h-5 w-5" />
-                        Schedule Meeting
-                      </Link>
-                    )}
                   </div>
                 </div>
               )}
@@ -548,67 +524,49 @@ export default function Dashboard() {
             
             <div className="bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
               {recentActivity.length > 0 ? (
-                <div className="divide-y divide-gray-200/50 dark:divide-gray-700/50" role="list">
+                <div className="divide-y divide-gray-200/50 dark:divide-gray-700/50">
                   {recentActivity.map((activity, index) => (
-                    <div key={activity.id} className="group p-6 hover:bg-gray-50/50 dark:hover:bg-gray-900/30 transition-colors duration-200" role="listitem">
+                    <div key={index} className="p-6 hover:bg-gray-50/50 dark:hover:bg-gray-900/50 transition-colors">
                       <div className="flex items-start space-x-4">
-                        <div className={`relative p-3 rounded-2xl shadow-sm ${
-                          activity.type === 'project_contribution' 
-                            ? 'bg-gradient-to-br from-blue-500/20 to-cyan-500/20 text-blue-600 dark:text-blue-400' 
-                            : activity.type === 'meeting_attendance'
-                              ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 text-green-600 dark:text-green-400'
-                              : 'bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-600 dark:text-purple-400'
-                        } group-hover:scale-110 transition-transform duration-200`}>
-                          {activity.type === 'project_contribution' && <FiCode size={20} />}
-                          {activity.type === 'meeting_attendance' && <FiCalendar size={20} />}
-                          {activity.type === 'issue_solved' && <FiCheckCircle size={20} />}
-                          <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+                        <div className={`p-3 rounded-xl ${
+                          activity.type === 'commit' 
+                            ? 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
+                            : activity.type === 'pr'
+                            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                            : activity.type === 'meeting'
+                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400'
+                            : 'bg-gray-100 dark:bg-gray-900/30 text-gray-600 dark:text-gray-400'
+                        }`}>
+                          {activity.type === 'commit' && <FiCode size={20} />}
+                          {activity.type === 'pr' && <FiGitBranch size={20} />}
+                          {activity.type === 'meeting' && <FiCalendar size={20} />}
+                          {activity.type === 'reward' && <FiAward size={20} />}
                         </div>
-                        
                         <div className="flex-1 min-w-0">
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <p className="font-semibold text-gray-900 dark:text-white text-base">
-                                {activity.action}
-                              </p>
-                              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                {activity.type === 'project_contribution' && (
-                                  <span className="flex items-center">
-                                    <FiTarget className="mr-1 h-3 w-3" />
-                                    Project: <span className="font-medium ml-1">{activity.project}</span>
-                                  </span>
-                                )}
-                                {activity.type === 'meeting_attendance' && (
-                                  <span className="flex items-center">
-                                    <FiUsers className="mr-1 h-3 w-3" />
-                                    Meeting: <span className="font-medium ml-1">{activity.meeting}</span>
-                                  </span>
-                                )}
-                                {activity.type === 'issue_solved' && (
-                                  <span className="flex items-center">
-                                    <FiStar className="mr-1 h-3 w-3" />
-                                    Project: <span className="font-medium ml-1">{activity.project}</span>
-                                  </span>
-                                )}
-                              </p>
-                              <div className="flex items-center mt-2 space-x-3">
-                                <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">
-                                  {formatDate(activity.date)}
-                                </span>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                  2 hours ago
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col items-end space-y-1">
-                              <div className="flex items-center px-3 py-1 bg-gradient-to-r from-purple-500/20 to-pink-500/20 text-purple-700 dark:text-purple-300 rounded-full">
-                                <FiZap className="mr-1 h-3 w-3" />
-                                <span className="text-sm font-bold">+{activity.points}</span>
-                              </div>
-                              <span className="text-xs text-gray-500 dark:text-gray-400">points</span>
-                            </div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {activity.title}
+                          </p>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                            {activity.description}
+                          </p>
+                          <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <span>{activity.time}</span>
+                            {activity.project && (
+                              <Link 
+                                href={`/projects/${activity.project.id}`}
+                                className="text-cyan-600 dark:text-cyan-400 hover:text-cyan-500 dark:hover:text-cyan-300"
+                              >
+                                {activity.project.name}
+                              </Link>
+                            )}
                           </div>
                         </div>
+                        {activity.points && (
+                          <div className="flex items-center space-x-1 text-sm font-medium text-purple-600 dark:text-purple-400">
+                            <FiAward className="h-4 w-4" />
+                            <span>+{activity.points}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -626,70 +584,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-          
-          {/* Enhanced Quick Actions - Only shown to authenticated users */}
-          {user?.email && (
-            <div className="bg-white/80 dark:bg-black/40 backdrop-blur-xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 p-8">
-              <div className="text-center mb-8">
-                <h2 className="text-2xl lg:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent mb-2">
-                  Quick Actions
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Jump into the most common tasks with one click
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <Link href="/projects/new" className="group relative bg-gradient-to-br from-cyan-500/10 to-blue-500/10 hover:from-cyan-500/20 hover:to-blue-500/20 border border-cyan-500/30 hover:border-cyan-500/50 rounded-xl p-6 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-cyan-500/20">
-                  <div className="flex flex-col items-center text-center space-y-3">
-                    <div className="p-3 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl group-hover:scale-110 transition-transform duration-300">
-                      <FiCode size={24} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">New Project</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Start a new coding project</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link href="/meetings/new" className="group relative bg-gradient-to-br from-green-500/10 to-emerald-500/10 hover:from-green-500/20 hover:to-emerald-500/20 border border-green-500/30 hover:border-green-500/50 rounded-xl p-6 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-green-500/20">
-                  <div className="flex flex-col items-center text-center space-y-3">
-                    <div className="p-3 bg-gradient-to-br from-green-500/20 to-emerald-500/20 text-green-600 dark:text-green-400 rounded-xl group-hover:scale-110 transition-transform duration-300">
-                      <FiCalendar size={24} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">Schedule Meeting</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Plan team sessions</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link href="/students" className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 border border-purple-500/30 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-purple-500/20">
-                  <div className="flex flex-col items-center text-center space-y-3">
-                    <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 text-purple-600 dark:text-purple-400 rounded-xl group-hover:scale-110 transition-transform duration-300">
-                      <FiUsers size={24} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">View Members</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Connect with teammates</p>
-                    </div>
-                  </div>
-                </Link>
-                
-                <Link href="/projects" className="group relative bg-gradient-to-br from-orange-500/10 to-red-500/10 hover:from-orange-500/20 hover:to-red-500/20 border border-orange-500/30 hover:border-orange-500/50 rounded-xl p-6 transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-orange-500/20">
-                  <div className="flex flex-col items-center text-center space-y-3">
-                    <div className="p-3 bg-gradient-to-br from-orange-500/20 to-red-500/20 text-orange-600 dark:text-orange-400 rounded-xl group-hover:scale-110 transition-transform duration-300">
-                      <FiGithub size={24} />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white">All Projects</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Browse all projects</p>
-                    </div>
-                  </div>
-                </Link>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </>

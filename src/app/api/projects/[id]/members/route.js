@@ -16,7 +16,27 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 // GET /api/projects/[id]/members - Get project members
 export async function GET(request, { params }) {
   try {
-    const { id: projectId } = await params;
+    const { id: projectId } = params;
+    console.log('Fetching members for project:', projectId);
+
+    // First get the project UUID if numeric ID is provided
+    let projectUuid = projectId;
+    if (/^\d+$/.test(projectId)) {
+      const { data: project, error: projectError } = await supabaseAdmin
+        .from('projects')
+        .select('id')
+        .eq('numeric_id', parseInt(projectId, 10))
+        .single();
+
+      if (projectError) {
+        console.error('Error finding project:', projectError);
+        return NextResponse.json(
+          { error: 'Project not found' },
+          { status: 404 }
+        );
+      }
+      projectUuid = project.id;
+    }
 
     const { data: members, error } = await supabaseAdmin
       .from('project_members')
@@ -28,7 +48,7 @@ export async function GET(request, { params }) {
         joined_at,
         user:profiles(id, full_name, avatar_url, github_username)
       `)
-      .eq('project_id', projectId)
+      .eq('project_id', projectUuid)
       .eq('is_active', true);
 
     if (error) {
@@ -68,125 +88,133 @@ export async function GET(request, { params }) {
 // POST /api/projects/[id]/members - Add member to project
 export async function POST(request, { params }) {
   try {
-    const { id: projectId } = await params;
+    const { id: projectId } = params;
     const body = await request.json();
     
+    console.log('Received request to add member:', {
+      projectId,
+      body
+    });
+
     const { userId, role = 'member' } = body;
 
     if (!userId) {
+      console.error('Missing userId in request');
       return NextResponse.json(
         { error: 'User ID is required' },
         { status: 400 }
       );
     }
 
-    // Check if user is already an active member
-    const { data: activeMember } = await supabaseAdmin
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
-
-    if (activeMember) {
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing Supabase configuration');
       return NextResponse.json(
-        { error: 'User is already a member of this project' },
-        { status: 400 }
+        { error: 'Server configuration error' },
+        { status: 500 }
       );
     }
 
-    // Check if user was previously a member (inactive)
-    const { data: inactiveMember } = await supabaseAdmin
-      .from('project_members')
-      .select('id')
-      .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .eq('is_active', false)
-      .single();
-
-    let member;
-
-    if (inactiveMember) {
-      // Reactivate the existing member record
-      const { data: reactivatedMember, error: reactivateError } = await supabaseAdmin
-        .from('project_members')
-        .update({
-          role: role,
-          is_active: true,
-          left_at: null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', inactiveMember.id)
-        .select(`
-          id,
-          role,
-          is_active,
-          user_id,
-          joined_at,
-          user:profiles(id, full_name, avatar_url, github_username)
-        `)
+    // First, get the project to ensure it exists and get its UUID
+    console.log('Looking up project with ID:', projectId);
+    let projectUuid = projectId;
+    
+    // Handle numeric IDs
+    if (/^\d+$/.test(projectId)) {
+      console.log('ID is numeric, searching by numeric_id');
+      const { data: project, error: projectError } = await supabaseAdmin
+        .from('projects')
+        .select('id')
+        .eq('numeric_id', parseInt(projectId, 10))
         .single();
 
-      if (reactivateError) {
-        throw reactivateError;
+      if (projectError) {
+        console.error('Project lookup error:', projectError);
+        return NextResponse.json(
+          { error: 'Project not found' },
+          { status: 404 }
+        );
       }
-
-      member = reactivatedMember;
-    } else {
-      // Create new member record
-      const { data: newMember, error: createError } = await supabaseAdmin
-        .from('project_members')
-        .insert({
-          project_id: projectId,
-          user_id: userId,
-          role: role,
-          is_active: true
-        })
-        .select(`
-          id,
-          role,
-          is_active,
-          user_id,
-          joined_at,
-          user:profiles(id, full_name, avatar_url, github_username)
-        `)
-        .single();
-
-      if (createError) {
-        throw createError;
-      }
-
-      member = newMember;
+      projectUuid = project.id;
     }
 
-    // Member variable is already set above
+    console.log('Using project UUID:', projectUuid);
 
-    // Transform the response
-    const transformedMember = {
-      id: member.id,
-      userId: member.user_id,
-      role: member.role,
-      name: member.user.full_name,
-      avatar: member.user.avatar_url || `https://i.pravatar.cc/150?u=${member.user.id}`,
-      githubUsername: member.user.github_username,
-      joinedAt: member.joined_at
-    };
+    // Check if member already exists
+    const { data: existingMembers, error: checkError } = await supabaseAdmin
+      .from('project_members')
+      .select('id, is_active')
+      .eq('project_id', projectUuid)
+      .eq('user_id', userId);
 
-    return NextResponse.json({
+    if (checkError) {
+      console.error('Error checking existing member:', checkError);
+      return NextResponse.json(
+        { error: 'Error checking existing member', details: checkError.message },
+        { status: 500 }
+      );
+    }
+
+    const existingMember = existingMembers?.[0];
+
+    if (existingMember) {
+      if (existingMember.is_active) {
+        return NextResponse.json(
+          { error: 'User is already a member of this project' },
+          { status: 400 }
+        );
+      } else {
+        // Reactivate the member
+        const { error: updateError } = await supabaseAdmin
+          .from('project_members')
+          .update({ 
+            is_active: true,
+            role: role,
+            left_at: null
+          })
+          .eq('id', existingMember.id);
+
+        if (updateError) {
+          console.error('Error reactivating member:', updateError);
+          return NextResponse.json(
+            { error: 'Error reactivating member', details: updateError.message },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({ 
+          success: true,
+          message: 'Member reactivated successfully'
+        });
+      }
+    }
+
+    // Add new member
+    const { error: insertError } = await supabaseAdmin
+      .from('project_members')
+      .insert({
+        project_id: projectUuid,
+        user_id: userId,
+        role: role,
+        is_active: true
+      });
+
+    if (insertError) {
+      console.error('Error creating member:', insertError);
+      return NextResponse.json(
+        { error: 'Error creating member', details: insertError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ 
       success: true,
-      data: transformedMember,
-      message: 'Member added to project successfully'
+      message: 'Member added successfully'
     });
 
   } catch (error) {
-    console.error('Error adding project member:', error);
-    
+    console.error('Error in POST /api/projects/[id]/members:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to add member to project',
-        details: error.message 
-      },
+      { error: 'Internal server error', details: error.message },
       { status: 500 }
     );
   }
@@ -195,7 +223,7 @@ export async function POST(request, { params }) {
 // DELETE /api/projects/[id]/members - Remove member from project
 export async function DELETE(request, { params }) {
   try {
-    const { id: projectId } = await params;
+    const { id: projectId } = params;
     const { searchParams } = new URL(request.url);
     const memberId = searchParams.get('memberId');
 
@@ -206,6 +234,25 @@ export async function DELETE(request, { params }) {
       );
     }
 
+    // Get project UUID if numeric ID is provided
+    let projectUuid = projectId;
+    if (/^\d+$/.test(projectId)) {
+      const { data: project, error: projectError } = await supabaseAdmin
+        .from('projects')
+        .select('id')
+        .eq('numeric_id', parseInt(projectId, 10))
+        .single();
+
+      if (projectError) {
+        console.error('Error finding project:', projectError);
+        return NextResponse.json(
+          { error: 'Project not found' },
+          { status: 404 }
+        );
+      }
+      projectUuid = project.id;
+    }
+
     // Remove member (set is_active to false)
     const { error } = await supabaseAdmin
       .from('project_members')
@@ -214,10 +261,14 @@ export async function DELETE(request, { params }) {
         left_at: new Date().toISOString()
       })
       .eq('id', memberId)
-      .eq('project_id', projectId);
+      .eq('project_id', projectUuid);
 
     if (error) {
-      throw error;
+      console.error('Error removing member:', error);
+      return NextResponse.json(
+        { error: 'Error removing member', details: error.message },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({

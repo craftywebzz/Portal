@@ -14,8 +14,16 @@ import {
   FiEdit,
   FiTrash2,
   FiExternalLink,
-  FiVideo
+  FiVideo,
+  FiCheckCircle,
+  FiX,
+  FiSearch,
+  FiFilter,
+  FiClipboard,
+  FiAlertCircle
 } from "react-icons/fi";
+import AttendanceTracker from '@/components/AttendanceTracker';
+import MeetingAttendance from '@/components/MeetingAttendance';
 
 export default function MeetingsPage() {
   const { user } = useAuth();
@@ -32,6 +40,14 @@ export default function MeetingsPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [attendanceCode, setAttendanceCode] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isMarking, setIsMarking] = useState(false);
+
+  // Check if user is admin
+  const isAdmin = user?.is_admin || false;
 
   // Fetch meetings on component mount
   useEffect(() => {
@@ -124,19 +140,57 @@ export default function MeetingsPage() {
     !isUpcoming(meeting.date, meeting.startTime)
   );
 
+  const handleMarkAttendance = async () => {
+    setIsMarking(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch("/api/meetings/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          attendanceCode,
+          userId: user.id
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setSuccess("Attendance marked successfully!");
+      setAttendanceCode("");
+      fetchMeetings();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsMarking(false);
+    }
+  };
+
   return (
     <>
       <Navigation />
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Meetings</h1>
-          <button
-            onClick={() => setActiveTab("create")}
-            className="btn-primary flex items-center"
-          >
-            <FiPlus className="mr-2" />
-            Schedule Meeting
-          </button>
+          <div className="flex items-center space-x-4">
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab("create")}
+                className="flex items-center px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <FiCalendar className="mr-2" />
+                Schedule Meeting
+              </button>
+            )}
+            
+            <button
+              onClick={() => setShowAttendanceModal(true)}
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-green-500/25 transform hover:scale-105 transition-all duration-300"
+            >
+              <FiCheckCircle className="mr-2" />
+              Mark Attendance
+            </button>
+          </div>
         </div>
 
         {message && (
@@ -207,12 +261,14 @@ export default function MeetingsPage() {
                           {activeTab === "past" && "No past meetings found."}
                           {activeTab === "list" && "No meetings have been created yet."}
                         </p>
-                        <button
-                          onClick={() => setActiveTab("create")}
-                          className="btn-primary"
-                        >
-                          Schedule Your First Meeting
-                        </button>
+                        {activeTab === "create" && isAdmin && (
+                          <button
+                            onClick={() => setActiveTab("create")}
+                            className="btn-primary"
+                          >
+                            Schedule Your First Meeting
+                          </button>
+                        )}
                       </div>
                     );
                   }
@@ -220,72 +276,85 @@ export default function MeetingsPage() {
                   return (
                     <div className="grid gap-4">
                       {displayMeetings.map((meeting) => (
-                        <div
-                          key={meeting.id}
-                          className="card p-6 hover:shadow-lg transition-shadow"
-                        >
+                        <div key={meeting.id} className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                           <div className="flex justify-between items-start mb-4">
                             <div>
-                              <h3 className="text-xl font-semibold mb-2">{meeting.title}</h3>
-                              <p className="text-gray-600 dark:text-gray-400 mb-3">
-                                {meeting.description}
-                              </p>
+                              <h2 className="text-2xl font-bold text-white mb-2">{meeting.title}</h2>
+                              <p className="text-gray-400">{meeting.description}</p>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              {isUpcoming(meeting.date, meeting.startTime) && (
-                                <span className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
-                                  Upcoming
-                                </span>
+                            <div className="flex space-x-2">
+                              {meeting.meeting_link && (
+                                <a
+                                  href={meeting.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                                >
+                                  <FiVideo className="mr-2" />
+                                  Join Meeting
+                                </a>
                               )}
-                              {!isUpcoming(meeting.date, meeting.startTime) && (
-                                <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs rounded-full">
-                                  Past
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                              <FiCalendar className="mr-2" />
-                              {formatDate(meeting.date)}
-                            </div>
-                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                              <FiClock className="mr-2" />
-                              {formatTime(meeting.startTime)}
-                              {meeting.duration && ` (${meeting.duration} min)`}
-                            </div>
-                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                              <FiMapPin className="mr-2" />
-                              {meeting.location}
-                            </div>
-                          </div>
-
-                          {meeting.meetingLink && (
-                            <div className="mt-4">
-                              <a
-                                href={meeting.meetingLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center text-primary hover:underline"
+                              <Link
+                                href={`/meetings/${meeting.id}/attendance`}
+                                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                               >
-                                <FiVideo className="mr-2" />
-                                Join Meeting
-                                <FiExternalLink className="ml-1 h-3 w-3" />
-                              </a>
+                                <FiClipboard className="mr-2" />
+                                Mark Attendance
+                              </Link>
                             </div>
-                          )}
+                          </div>
 
-                          {meeting.attendanceOpen && (
-                            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                              <p className="text-sm text-blue-800 dark:text-blue-200">
-                                <strong>Attendance is open!</strong>
-                                {meeting.attendanceCode && (
-                                  <span className="ml-2">Code: <strong>{meeting.attendanceCode}</strong></span>
-                                )}
-                              </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <h3 className="text-lg font-semibold text-white mb-2">Meeting Details</h3>
+                              <div className="space-y-2">
+                                <p className="text-gray-300">
+                                  <span className="text-gray-400">Date:</span> {formatDate(meeting.date)}
+                                </p>
+                                <p className="text-gray-300">
+                                  <span className="text-gray-400">Time:</span> {meeting.start_time} - {meeting.end_time}
+                                </p>
+                                <p className="text-gray-300">
+                                  <span className="text-gray-400">Location:</span> {meeting.location}
+                                </p>
+                                <p className="text-gray-300">
+                                  <span className="text-gray-400">Type:</span> {meeting.meeting_type}
+                                </p>
+                              </div>
                             </div>
-                          )}
+
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <h3 className="text-lg font-semibold text-white mb-2">Attendance Status</h3>
+                              <div className="space-y-2">
+                                <p className="text-gray-300">
+                                  <span className="text-gray-400">Status:</span>{' '}
+                                  <span className={`px-2 py-1 rounded-full text-sm ${
+                                    meeting.attendance_open
+                                      ? 'bg-green-900/50 text-green-300'
+                                      : 'bg-red-900/50 text-red-300'
+                                  }`}>
+                                    {meeting.attendance_open ? 'Open' : 'Closed'}
+                                  </span>
+                                </p>
+                                {meeting.attendance_open && meeting.attendance_code && (
+                                  <p className="text-gray-300">
+                                    <span className="text-gray-400">Code:</span>{' '}
+                                    <span className="font-mono bg-gray-800 px-2 py-1 rounded">
+                                      {meeting.attendance_code}
+                                    </span>
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <MeetingAttendance 
+                            meeting={meeting} 
+                            onAttendanceUpdate={() => {
+                              // Refresh meetings list after attendance update
+                              fetchMeetings();
+                            }} 
+                          />
                         </div>
                       ))}
                     </div>
@@ -296,81 +365,162 @@ export default function MeetingsPage() {
           </div>
         )}
 
-        {activeTab === "create" && (
+        {activeTab === "create" && isAdmin && (
           <div>
             <h2 className="text-2xl font-bold mb-6">Schedule a New Meeting</h2>
             <form onSubmit={handleSubmit} className="grid md:grid-cols-2 gap-6">
-          <div>
-            <label className="block mb-1 text-sm font-medium">Title</label>
-            <input
-              name="title"
-              value={form.title}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
+              <div>
+                <label className="block mb-1 text-sm font-medium">Title</label>
+                <input
+                  name="title"
+                  value={form.title}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-sm font-medium">Date</label>
+                <input
+                  type="date"
+                  name="date"
+                  value={form.date}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-sm font-medium">Time</label>
+                <input
+                  type="time"
+                  name="time"
+                  value={form.time}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div>
+                <label className="block mb-1 text-sm font-medium">Location (Room or Online)</label>
+                <input
+                  name="location"
+                  value={form.location}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block mb-1 text-sm font-medium">Online Link (optional)</label>
+                <input
+                  name="link"
+                  value={form.link}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block mb-1 text-sm font-medium">Description</label>
+                <textarea
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  rows={4}
+                  className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
+                />
+              </div>
+              <div className="md:col-span-2 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="btn-primary px-6 py-2"
+                >
+                  {submitting ? "Scheduling..." : "Schedule Meeting"}
+                </button>
+              </div>
+            </form>
           </div>
-          <div>
-            <label className="block mb-1 text-sm font-medium">Date</label>
-            <input
-              type="date"
-              name="date"
-              value={form.date}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
+        )}
+
+        {activeTab === "create" && !isAdmin && (
+          <div className="text-center py-12">
+            <FiAlertCircle className="mx-auto h-12 w-12 text-red-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+              Access Denied
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400">
+              Only administrators can schedule meetings.
+            </p>
           </div>
-          <div>
-            <label className="block mb-1 text-sm font-medium">Time</label>
-            <input
-              type="time"
-              name="time"
-              value={form.time}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
-          </div>
-          <div>
-            <label className="block mb-1 text-sm font-medium">Location (Room or Online)</label>
-            <input
-              name="location"
-              value={form.location}
-              onChange={handleChange}
-              required
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block mb-1 text-sm font-medium">Online Link (optional)</label>
-            <input
-              name="link"
-              value={form.link}
-              onChange={handleChange}
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label className="block mb-1 text-sm font-medium">Description</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              rows={4}
-              className="w-full px-3 py-2 rounded-md border border-gray-700 bg-transparent"
-            />
-          </div>
-          <div className="md:col-span-2 flex justify-end">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="btn-primary px-6 py-2"
-            >
-              {submitting ? "Scheduling..." : "Schedule Meeting"}
-            </button>
-          </div>
-        </form>
+        )}
+
+        {/* Attendance Modal */}
+        {showAttendanceModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-white">Mark Attendance</h2>
+                <button
+                  onClick={() => setShowAttendanceModal(false)}
+                  className="text-gray-400 hover:text-white"
+                >
+                  <FiX className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <div className="mb-4">
+                <label htmlFor="attendanceCode" className="block text-sm text-gray-400 mb-2">
+                  Enter Attendance Code
+                </label>
+                <input
+                  type="text"
+                  id="attendanceCode"
+                  value={attendanceCode}
+                  onChange={(e) => setAttendanceCode(e.target.value)}
+                  placeholder="Enter the attendance code"
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {error && (
+                <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-200 text-sm">
+                  {error}
+                </div>
+              )}
+
+              {success && (
+                <div className="mb-4 p-3 bg-green-900/50 border border-green-700 rounded-lg text-green-200 text-sm">
+                  {success}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowAttendanceModal(false)}
+                  className="px-4 py-2 text-gray-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMarkAttendance}
+                  disabled={isMarking || !attendanceCode}
+                  className="flex items-center px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-green-500/25 transform hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isMarking ? (
+                    <>
+                      <FiClock className="animate-spin mr-2" />
+                      Marking...
+                    </>
+                  ) : (
+                    <>
+                      <FiCheckCircle className="mr-2" />
+                      Mark Attendance
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

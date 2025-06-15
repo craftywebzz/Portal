@@ -15,7 +15,7 @@ export default function AuthCallback() {
         
         if (error) {
           console.error('Auth callback error:', error);
-          router.push('/auth/signin?error=callback_error');
+          router.push('/?error=callback_error');
           return;
         }
 
@@ -24,11 +24,11 @@ export default function AuthCallback() {
           router.push('/dashboard');
         } else {
           // No session found, redirect to sign in
-          router.push('/auth/signin');
+          router.push('/');
         }
       } catch (error) {
         console.error('Unexpected error in auth callback:', error);
-        router.push('/auth/signin?error=unexpected_error');
+        router.push('/?error=unexpected_error');
       }
     };
 

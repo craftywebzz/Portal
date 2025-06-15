@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.0",
     "@supabase/auth-helpers-nextjs": "^0.10.0",
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.9",
@@ -16,11 +17,14 @@
     "chart.js": "^4.4.1",
     "date-fns": "^3.3.1",
     "framer-motion": "^12.18.1",
+    "googleapis": "^150.0.1",
     "next": "15.3.3",
     "nodemailer": "^7.0.3",
+    "open": "^10.1.2",
     "react": "^19.0.0",
     "react-chartjs-2": "^5.2.0",
     "react-dom": "^19.0.0",
+    "react-hot-toast": "^2.5.2",
     "react-icons": "^5.5.0",
     "zustand": "^4.5.0"
   },

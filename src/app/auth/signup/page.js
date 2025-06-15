@@ -89,7 +89,7 @@ export default function SignUp() {
         setMessage("Account created successfully! You can now sign in.");
         // Redirect to sign-in page after a short delay
         setTimeout(() => {
-          router.push('/auth/signin');
+          router.push('/');
         }, 2000);
       }
     } catch (err) {

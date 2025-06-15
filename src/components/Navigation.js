@@ -17,7 +17,8 @@ import {
   FiMoon,
   FiSun,
   FiSettings,
-  FiChevronDown
+  FiChevronDown,
+  FiUserCheck
 } from "react-icons/fi";
 
 export default function Navigation() {
@@ -84,6 +85,9 @@ export default function Navigation() {
   const adminNavItems = [
     { name: "New Project", href: "/projects/new", icon: FiCode, description: "Create Repository" },
     { name: "Schedule Meeting", href: "/meetings/new", icon: FiCalendar, description: "Book Session" },
+    { name: "Mark Attendance", href: "/meetings/attendance", icon: FiCalendar, description: "Take Attendance" },
+    { name: "Manage Users", href: "/admin/manage-users", icon: FiUsers, description: "User Management" },
+    { name: "Make Admin", href: "/admin/make-admin", icon: FiUserCheck, description: "Grant Admin Access" },
     { name: "Settings", href: "/admin/settings", icon: FiSettings, description: "Admin Panel" },
   ];
 
@@ -275,7 +279,7 @@ export default function Navigation() {
                 </div>
               ) : (
                 <Link
-                  href="/auth/signin"
+                  href="/"
                   className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-cyan-500/25 transform hover:scale-105 transition-all duration-300"
                 >
                   Connect
@@ -403,7 +407,7 @@ export default function Navigation() {
                 </>
               ) : (
                 <Link
-                  href="/auth/signin"
+                  href="/"
                   className="flex items-center justify-center px-6 py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white text-base font-semibold rounded-xl hover:shadow-lg transition-all duration-300"
                 >
                   Connect

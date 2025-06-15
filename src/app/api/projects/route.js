@@ -130,8 +130,7 @@ export async function POST(request) {
     if (body.github_repo_url) projectData.github_repo_url = body.github_repo_url;
     if (body.live_demo_url) projectData.live_demo_url = body.live_demo_url;
     if (body.tech_stack && body.tech_stack.length > 0) projectData.tech_stack = body.tech_stack;
-
-
+    if (body.numeric_id) projectData.numeric_id = parseInt(body.numeric_id, 10);
 
     // Use the admin client to bypass RLS
     const { data: project, error } = await supabaseAdmin
@@ -144,8 +143,6 @@ export async function POST(request) {
       console.error('Supabase error creating project:', error);
       throw error;
     }
-
-
 
     // Add creator as project member using admin client
     const { error: memberError } = await supabaseAdmin
@@ -162,20 +159,11 @@ export async function POST(request) {
       // Don't fail the whole request if member addition fails
     }
 
-    return NextResponse.json({
-      success: true,
-      data: project,
-      message: 'Project created successfully'
-    });
-
+    return NextResponse.json({ success: true, data: project });
   } catch (error) {
     console.error('Error creating project:', error);
-
     return NextResponse.json(
-      {
-        error: 'Failed to create project',
-        details: error.message
-      },
+      { error: error.message || 'Failed to create project' },
       { status: 500 }
     );
   }

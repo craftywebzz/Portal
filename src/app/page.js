@@ -2,11 +2,13 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import Image from "next/image";
 
 export default function Home() {
   const router = useRouter();
+  const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -20,13 +22,37 @@ export default function Home() {
     setError(null);
     setLoginLoading(true);
     
-    // Simulate loading delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
     try {
-      router.push(role === 'admin' ? '/dashboard' : '/member');
+      const { data, error } = await signIn(email, password);
+      
+      if (error) {
+        setError(error.message);
+        return;
+      }
+
+      if (data?.user) {
+        // Check if user is admin
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError) {
+          setError('Failed to fetch user profile');
+          return;
+        }
+
+        // Redirect based on role and admin status
+        if (role === 'admin' && !profile.is_admin) {
+          setError('You do not have admin privileges');
+          return;
+        }
+
+        router.push(role === 'admin' ? '/dashboard' : '/member');
+      }
     } catch (error) {
-      setError(error.message);
+      setError(error.message || 'An unexpected error occurred');
     } finally {
       setLoginLoading(false);
     }
@@ -206,8 +232,6 @@ export default function Home() {
               Create an account
             </Link>
           </div>
-          
-     
         </div>
       </div>
     </div>
